@@ -7,6 +7,14 @@ import 'package:pkm_lucky_draw/cards/xy7.dart';
 import 'package:pkm_lucky_draw/common/route_drawer.dart';
 import 'package:pkm_lucky_draw/cards/pokemon_card.dart';
 
+import '../utils/storage_service.dart';
+
+enum DbKeys {
+  packedOpened,
+  wallet,
+  highScore,
+}
+
 class PokemonDrawing extends StatefulWidget {
   const PokemonDrawing({super.key});
 
@@ -20,6 +28,8 @@ class _PokemonDrawingState extends State<PokemonDrawing>
 
   var isDrew = false;
   var wallet = 1000.0;
+  var packsOpened = 0;
+  var highScore = 0;
 
   final rareProbs = {
     // 'Common': 0,
@@ -91,7 +101,7 @@ class _PokemonDrawingState extends State<PokemonDrawing>
     return Scaffold(
       appBar: AppBar(
         leading: null,
-        title: Text("\$: $wallet"),
+        title: WalletRecord(),
         centerTitle: true,
         actions: [
           IconButton(
@@ -143,7 +153,32 @@ class _PokemonDrawingState extends State<PokemonDrawing>
                 }
 
                 setState(() {
+                  packsOpened += 1;
                   wallet -= 100;
+
+                  storageService.write(
+                    key: DbKeys.packedOpened.name,
+                    value: '$packsOpened',
+                  );
+                  storageService.write(
+                    key: DbKeys.wallet.name,
+                    value: '$wallet',
+                  );
+
+                  storageService.read(key: DbKeys.highScore.name).then((value) {
+                    final dbHighScore = int.parse(value ?? '0');
+                    if (dbHighScore < packsOpened) {
+                      storageService.write(
+                        key: DbKeys.highScore.name,
+                        value: '$packsOpened',
+                      );
+                      if (mounted) {
+                        setState(() {
+                          highScore = packsOpened;
+                        });
+                      }
+                    }
+                  });
                 });
 
                 _playChestAnimation(); // Call the function to play the animation
@@ -152,6 +187,8 @@ class _PokemonDrawingState extends State<PokemonDrawing>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          PackedOpenRecord(),
+          HighScoreRecord(),
           // Use PageView for swiping between card slots
           if (isDrew) cardStack() else Expanded(child: Container()),
           SizedBox(
@@ -221,8 +258,8 @@ class _PokemonDrawingState extends State<PokemonDrawing>
     print(cards.length);
     return Expanded(
       child: CardSwiper(
-        backCardOffset: const Offset(19, 24),
-        padding: const EdgeInsets.symmetric(horizontal: 125, vertical: 55.5),
+        backCardOffset: const Offset(-1, 0),
+        // padding: const EdgeInsets.symmetric(horizontal: 125, vertical: 55.5),
         cardsCount: 6,
         isLoop: false,
         onEnd: () {
@@ -276,20 +313,81 @@ class _PokemonDrawingState extends State<PokemonDrawing>
             ClipRRect(
           //borderRadius:
           //BorderRadius.circular(50.0), // Adjust the radius as needed
-          child: Card(
-            elevation: 4,
-            child: Container(
-              alignment: Alignment.center,
+          child: Center(
+            child: Card(
+              elevation: 4,
               child: index == 0
                   ? Image.asset('images/xy7-cover.png', fit: BoxFit.cover)
                   : Image.network(
                       cards[index - 1].images?.small ?? 'images/xy7-cover.png',
                       fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+
+                        return CircularProgressIndicator(
+                          value: (loadingProgress.cumulativeBytesLoaded /
+                              (loadingProgress.expectedTotalBytes ?? 1)),
+                        );
+                      },
                     ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class PackedOpenRecord extends StatelessWidget {
+  const PackedOpenRecord({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: storageService.read(key: DbKeys.packedOpened.name),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            final data = snapshot.data;
+            return Text('Packs opened: ${data ?? '0'}');
+          }
+
+          return CircularProgressIndicator();
+        });
+  }
+}
+
+class WalletRecord extends StatelessWidget {
+  const WalletRecord({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: storageService.read(key: DbKeys.wallet.name),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            final data = snapshot.data;
+            return Text('\$: ${data ?? '1000'}');
+          }
+
+          return CircularProgressIndicator();
+        });
+  }
+}
+
+class HighScoreRecord extends StatelessWidget {
+  const HighScoreRecord({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: storageService.read(key: DbKeys.highScore.name),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            final data = snapshot.data;
+            return Text('High score: : ${data ?? '0'}');
+          }
+
+          return CircularProgressIndicator();
+        });
   }
 }

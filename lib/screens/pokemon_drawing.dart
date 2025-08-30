@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -25,7 +26,9 @@ class PokemonDrawing extends StatefulWidget {
 
 class _PokemonDrawingState extends State<PokemonDrawing>
     with TickerProviderStateMixin {
-  late final AnimationController _chestController;
+  late final AnimationController _animationController;
+  late final ConfettiController _topRightConfettiController;
+  late final ConfettiController _topLeftConfettiController;
 
   var isDrew = false;
   var wallet = 1000.0;
@@ -38,8 +41,8 @@ class _PokemonDrawingState extends State<PokemonDrawing>
     'Rare': 10,
     'Rare Holo': 5,
     'Rare Holo EX': 3,
-    'Rare Ultra': 1.5,
-    'Rare Secret': 0.5,
+    'Rare Ultra': 10,
+    'Rare Secret': 5,
   };
 
   final translations = {
@@ -79,28 +82,34 @@ class _PokemonDrawingState extends State<PokemonDrawing>
       setState(() => highScore = int.tryParse('$e') ?? 0);
     });
 
-    _chestController = AnimationController(vsync: this);
+    _topRightConfettiController =
+        ConfettiController(duration: const Duration(seconds: 3));
+    _topLeftConfettiController =
+        ConfettiController(duration: const Duration(seconds: 3));
+    _animationController = AnimationController(vsync: this);
 
     // Loop the shaking animation
     // * Triggered whenever animation controller value changes
-    _chestController.addListener(() {
+    _animationController.addListener(() {
       if (isDrew) {
-        _chestController.forward();
+        _animationController.forward();
         return;
       }
 
-      if (_chestController.value >= 0.31) {
-        _chestController.reverse();
+      if (_animationController.value >= 0.31) {
+        _animationController.reverse();
       }
-      if (_chestController.value <= 0) {
-        _chestController.forward();
+      if (_animationController.value <= 0) {
+        _animationController.forward();
       }
     });
   }
 
   @override
   void dispose() {
-    _chestController.dispose();
+    _animationController.dispose();
+    _topRightConfettiController.dispose();
+    _topLeftConfettiController.dispose();
     super.dispose();
   }
 
@@ -120,33 +129,33 @@ class _PokemonDrawingState extends State<PokemonDrawing>
         actions: [
           IconButton(
               onPressed: () => showDialog(
-                    context: context,
-                    builder: (dialogCtx) => AlertDialog(
-                          icon: Icon(Icons.warning),
-                          title: Text('Reset?'),
-                          content: Text(
-                              'This action will reset your record and is irreversible!'),
-                          actions: [
-                            ElevatedButton(
-                                onPressed: () => Navigator.of(dialogCtx).pop(),
-                                child: Text('CANCEL')),
-                            TextButton(
-                                onPressed: () {
-                                  Navigator.of(dialogCtx).pop();
-                                  setState(() {
-                                    wallet = 1000;
-                                    packsOpened = 0;
+                  context: context,
+                  builder: (dialogCtx) => AlertDialog(
+                        icon: Icon(Icons.warning),
+                        title: Text('Reset?'),
+                        content: Text(
+                            'This action will reset your record and is irreversible!'),
+                        actions: [
+                          ElevatedButton(
+                              onPressed: () => Navigator.of(dialogCtx).pop(),
+                              child: Text('CANCEL')),
+                          TextButton(
+                              onPressed: () {
+                                Navigator.of(dialogCtx).pop();
+                                setState(() {
+                                  wallet = 1000;
+                                  packsOpened = 0;
 
-                                    storageService.write(
-                                        key: DbKeys.wallet.name, value: '1000');
-                                    storageService.write(
-                                        key: DbKeys.packedOpened.name,
-                                        value: '0');
-                                  });
-                                },
-                                child: Text('OK')),
-                          ],
-                        )),
+                                  storageService.write(
+                                      key: DbKeys.wallet.name, value: '1000');
+                                  storageService.write(
+                                      key: DbKeys.packedOpened.name,
+                                      value: '0');
+                                });
+                              },
+                              child: Text('OK')),
+                        ],
+                      )),
               icon: Icon(Icons.refresh)),
           IconButton(
             onPressed: () => showDialog(
@@ -219,25 +228,53 @@ class _PokemonDrawingState extends State<PokemonDrawing>
                 _playChestAnimation(); // Call the function to play the animation
                 drawCards();
               }),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      body: Stack(
         children: [
-          Text('Packs opened: $packsOpened'),
-          Text('High score: : $highScore'),
+          Positioned.fill(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text('Packs opened: $packsOpened'),
+                Text('High score: : $highScore'),
 
-          // Use PageView for swiping between card slots
-          if (isDrew) cardStack() else Expanded(child: Container()),
-          SizedBox(
-            height: 250, // Fixed height for the treasure chest
-            child: Lottie.asset(
-              'images/treasure-chest.json',
-              controller: _chestController,
-              onLoaded: (composition) {
-                _chestController.duration = composition.duration;
-                _chestController.forward();
-              },
+                // Use PageView for swiping between card slots
+                if (isDrew) cardStack() else Expanded(child: Container()),
+                SizedBox(
+                  height: 250, // Fixed height for the treasure chest
+                  child: Lottie.asset(
+                    'images/treasure-chest.json',
+                    controller: _animationController,
+                    onLoaded: (composition) {
+                      _animationController.duration = composition.duration;
+                      _animationController.forward();
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
+          Align(
+            alignment: Alignment.topRight,
+            child: ConfettiWidget(
+              confettiController: _topRightConfettiController,
+              blastDirection: pi / 4 * 3, // radial value
+              particleDrag: 0.05, // apply drag to the confetti
+              emissionFrequency: 0.25, // how often it should emit
+              numberOfParticles: 25, // number of particles to emit
+              gravity: 0.1, // gravity - or fall speed
+            ),
+          ),
+          Align(
+            alignment: Alignment.topLeft,
+            child: ConfettiWidget(
+              confettiController: _topLeftConfettiController,
+              blastDirection: pi / 4, // radial value
+              particleDrag: 0.05, // apply drag to the confetti
+              emissionFrequency: 0.25, // how often it should emit
+              numberOfParticles: 50, // number of particles to emit
+              gravity: 0.1, // gravity - or fall speed
+            ),
+          )
         ],
       ),
     );
@@ -304,6 +341,23 @@ class _PokemonDrawingState extends State<PokemonDrawing>
         // padding: const EdgeInsets.symmetric(horizontal: 125, vertical: 55.5),
         cardsCount: 6,
         isLoop: false,
+        onSwipe: (previousIndex, currentIndex, direction) {
+          if (currentIndex != null) {
+            try {
+              final currentCard = cards[currentIndex - 1];
+              if ([
+                'Rare Ultra',
+                'Rare Secret',
+              ].contains(currentCard.rarity)) {
+                _topRightConfettiController.play();
+                _topLeftConfettiController.play();
+              }
+            } catch (e) {
+              print('e: $e');
+            }
+          }
+          return true;
+        },
         onEnd: () {
           var total = 0.0;
           for (final card in cards) {
@@ -313,7 +367,7 @@ class _PokemonDrawingState extends State<PokemonDrawing>
 
           setState(() {
             isDrew = false;
-            _chestController.animateTo(0);
+            _animationController.animateTo(0);
           });
 
           showAdaptiveDialog(
@@ -365,7 +419,7 @@ class _PokemonDrawingState extends State<PokemonDrawing>
                       fit: BoxFit.cover,
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
-
+            
                         return CircularProgressIndicator(
                           value: (loadingProgress.cumulativeBytesLoaded /
                               (loadingProgress.expectedTotalBytes ?? 1)),

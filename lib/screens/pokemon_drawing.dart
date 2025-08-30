@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pkm_lucky_draw/cards/xy7.dart';
 import 'package:pkm_lucky_draw/common/route_drawer.dart';
@@ -65,6 +66,19 @@ class _PokemonDrawingState extends State<PokemonDrawing>
   void initState() {
     super.initState();
 
+    storageService.read(key: DbKeys.packedOpened.name).then((e) {
+      if (!mounted) return;
+      setState(() => packsOpened = int.tryParse('$e') ?? 0);
+    });
+    storageService.read(key: DbKeys.wallet.name).then((e) {
+      if (!mounted) return;
+      setState(() => wallet = double.tryParse('$e') ?? 0);
+    });
+    storageService.read(key: DbKeys.highScore.name).then((e) {
+      if (!mounted) return;
+      setState(() => highScore = int.tryParse('$e') ?? 0);
+    });
+
     _chestController = AnimationController(vsync: this);
 
     // Loop the shaking animation
@@ -101,9 +115,39 @@ class _PokemonDrawingState extends State<PokemonDrawing>
     return Scaffold(
       appBar: AppBar(
         leading: null,
-        title: WalletRecord(),
+        title: Text('\$: $wallet'),
         centerTitle: true,
         actions: [
+          IconButton(
+              onPressed: () => showDialog(
+                    context: context,
+                    builder: (dialogCtx) => AlertDialog(
+                          icon: Icon(Icons.warning),
+                          title: Text('Reset?'),
+                          content: Text(
+                              'This action will reset your record and is irreversible!'),
+                          actions: [
+                            ElevatedButton(
+                                onPressed: () => Navigator.of(dialogCtx).pop(),
+                                child: Text('CANCEL')),
+                            TextButton(
+                                onPressed: () {
+                                  Navigator.of(dialogCtx).pop();
+                                  setState(() {
+                                    wallet = 1000;
+                                    packsOpened = 0;
+
+                                    storageService.write(
+                                        key: DbKeys.wallet.name, value: '1000');
+                                    storageService.write(
+                                        key: DbKeys.packedOpened.name,
+                                        value: '0');
+                                  });
+                                },
+                                child: Text('OK')),
+                          ],
+                        )),
+              icon: Icon(Icons.refresh)),
           IconButton(
             onPressed: () => showDialog(
               context: context,
@@ -155,7 +199,13 @@ class _PokemonDrawingState extends State<PokemonDrawing>
                 setState(() {
                   packsOpened += 1;
                   wallet -= 100;
-
+                  if (highScore < packsOpened) {
+                    highScore = packsOpened;
+                    storageService.write(
+                      key: DbKeys.highScore.name,
+                      value: '$packsOpened',
+                    );
+                  }
                   storageService.write(
                     key: DbKeys.packedOpened.name,
                     value: '$packsOpened',
@@ -164,21 +214,6 @@ class _PokemonDrawingState extends State<PokemonDrawing>
                     key: DbKeys.wallet.name,
                     value: '$wallet',
                   );
-
-                  storageService.read(key: DbKeys.highScore.name).then((value) {
-                    final dbHighScore = int.parse(value ?? '0');
-                    if (dbHighScore < packsOpened) {
-                      storageService.write(
-                        key: DbKeys.highScore.name,
-                        value: '$packsOpened',
-                      );
-                      if (mounted) {
-                        setState(() {
-                          highScore = packsOpened;
-                        });
-                      }
-                    }
-                  });
                 });
 
                 _playChestAnimation(); // Call the function to play the animation
@@ -187,8 +222,9 @@ class _PokemonDrawingState extends State<PokemonDrawing>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          PackedOpenRecord(),
-          HighScoreRecord(),
+          Text('Packs opened: $packsOpened'),
+          Text('High score: : $highScore'),
+
           // Use PageView for swiping between card slots
           if (isDrew) cardStack() else Expanded(child: Container()),
           SizedBox(
@@ -249,13 +285,19 @@ class _PokemonDrawingState extends State<PokemonDrawing>
       cards.addAll(filtered.take(1));
     }
 
+    var total = 0.0;
+    for (final card in cards) {
+      total += sellingPriceList[card.rarity] ?? 0;
+    }
+    storageService.write(key: DbKeys.wallet.name, value: '${wallet + total}');
+
     return cards;
   }
 
   Widget cardStack() {
     var cards = <PokemonCard>[];
     cards = drawCards();
-    print(cards.length);
+
     return Expanded(
       child: CardSwiper(
         backCardOffset: const Offset(-1, 0),
@@ -335,59 +377,5 @@ class _PokemonDrawingState extends State<PokemonDrawing>
         ),
       ),
     );
-  }
-}
-
-class PackedOpenRecord extends StatelessWidget {
-  const PackedOpenRecord({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder(
-        future: storageService.read(key: DbKeys.packedOpened.name),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            final data = snapshot.data;
-            return Text('Packs opened: ${data ?? '0'}');
-          }
-
-          return CircularProgressIndicator();
-        });
-  }
-}
-
-class WalletRecord extends StatelessWidget {
-  const WalletRecord({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder(
-        future: storageService.read(key: DbKeys.wallet.name),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            final data = snapshot.data;
-            return Text('\$: ${data ?? '1000'}');
-          }
-
-          return CircularProgressIndicator();
-        });
-  }
-}
-
-class HighScoreRecord extends StatelessWidget {
-  const HighScoreRecord({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder(
-        future: storageService.read(key: DbKeys.highScore.name),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            final data = snapshot.data;
-            return Text('High score: : ${data ?? '0'}');
-          }
-
-          return CircularProgressIndicator();
-        });
   }
 }
